@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: UniFix Maintenance API
+  version: 1.0.0
+  description: REST API for university maintenance requests. Protected routes use the unifix_session HttpOnly cookie.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+paths:
+  /api/auth/register:
+    post:
+      summary: Register a student or staff account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, minLength: 2 }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                role: { type: string, enum: [student, staff], default: student }
+      responses:
+        '201': { description: Account created and session cookie set }
+        '400': { description: Validation error }
+        '409': { description: Email already exists }
+  /api/auth/login:
+    post:
+      summary: Sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: Authenticated }
+        '401': { description: Invalid credentials }
+  /api/auth/logout:
+    post:
+      summary: Sign out
+      responses:
+        '200': { description: Session cookie cleared }
+  /api/categories:
+    get:
+      summary: List active categories
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { description: Categories returned }
+  /api/requests:
+    get:
+      summary: List requests visible to the current user
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [submitted, assigned, in_progress, on_hold, completed, rejected] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        '200': { description: Paginated request list }
+        '401': { description: Unauthorized }
+    post:
+      summary: Submit a maintenance request
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, description, categoryId, location, priority]
+              properties:
+                title: { type: string, minLength: 5, maxLength: 120 }
+                description: { type: string, minLength: 15, maxLength: 4000 }
+                categoryId: { type: string }
+                location: { type: string }
+                priority: { type: string, enum: [low, medium, high, urgent] }
+      responses:
+        '201': { description: Request created }
+        '400': { description: Validation error }
+        '401': { description: Unauthorized }
+  /api/requests/{id}:
+    get:
+      summary: Get a request and status timeline
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Request details }
+        '403': { description: Forbidden }
+        '404': { description: Not found }
+  /api/requests/{id}/assign:
+    post:
+      summary: Assign a maintenance officer (administrator only)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [officerId]
+              properties:
+                officerId: { type: string }
+      responses:
+        '200': { description: Assignment created }
+        '403': { description: Administrator access required }
+  /api/requests/{id}/status:
+    post:
+      summary: Update request status
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [assigned, in_progress, on_hold, completed, rejected] }
+                comment: { type: string, maxLength: 1000 }
+      responses:
+        '200': { description: Status updated }
+        '403': { description: Forbidden }
+        '409': { description: Invalid status transition }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: unifix_session
